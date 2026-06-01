@@ -152,6 +152,7 @@ struct server_slot {
         }
 
         prompt.tokens.clear();
+        prompt.checkpoints.clear();
     }
 
     std::vector<common_adapter_lora_info> lora;
@@ -2059,6 +2060,13 @@ private:
                         break;
                     }
 
+                    if (task.params.use_slot_prompt) {
+                        server_tokens prepended_tokens = slot->prompt.tokens.clone();
+                        prepended_tokens.push_back(task.tokens);
+                        task.tokens = std::move(prepended_tokens);
+                        SRV_INF("Prepended slot prompt tokens to task. New task size: %zu tokens\n", task.tokens.size());
+                    }
+
                     if (task.is_parent()) {
                         // try getting free slots for all child tasks
                         size_t n_child_tasks = task.child_tasks.size();
@@ -2221,6 +2229,13 @@ private:
                     tokens.resize(token_count);
                     slot->prompt.tokens.clear();
                     slot->prompt.tokens.insert(tokens);
+                    slot->prompt.checkpoints.clear();
+                    if (token_count > 0) {
+                        auto & cur = slot->prompt.checkpoints.emplace_back();
+                        cur.update_pos(token_count, 0, token_count - 1);
+                        cur.update_tgt(ctx_tgt,       slot->id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+                        cur.update_dft(ctx_dft.get(), slot->id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
+                    }
 
                     const int64_t t_end = ggml_time_us();
                     const double t_restore_ms = (t_end - t_start) / 1000.0;
@@ -2730,7 +2745,7 @@ private:
 
                                 // when the prompt prefix does not match, print the tokens around the mismatch
                                 // this is useful for debugging prompt caching
-                                if (slots_debug) {
+                                if (true) {
                                     const int np0 = std::max<int>(n_past - 4, 0);
                                     const int np1 = std::min<int>(n_past + 6, std::min(slot.prompt.tokens.size(), slot.task->tokens.size()));
 
@@ -2773,13 +2788,19 @@ private:
 
                                 if (pos_min >= pos_min_thold) {
                                     // search for a context checkpoint
+                                    // only consider checkpoints whose tokens are within the validated common prefix (n_past)
+                                    // this prevents restoring a checkpoint from a different document loaded by the prompt cache
                                     const auto it = std::find_if(
                                         slot.prompt.checkpoints.rbegin(),
                                         slot.prompt.checkpoints.rend(),
                                         [&, func_name = __func__](const auto & cur) {
                                             // guarantee that a checkpoint will result in at least one token being processed [TAG_PROMPT_LOGITS]
-                                            LOG_INF("slot %12.*s: id %2d | task %d | Checking checkpoint with [%d, %d] against %d...\n", 12,
-                                                func_name, (slot).id, ((slot).task ? (slot).task->id : -1), cur.pos_min, cur.pos_max, pos_min_thold);
+                                            LOG_INF("slot %12.*s: id %2d | task %d | Checking checkpoint with [%d, %d] (n_tokens=%" PRId64 ") against thold=%d, n_past=%d...\n", 12,
+                                                func_name, (slot).id, ((slot).task ? (slot).task->id : -1), cur.pos_min, cur.pos_max, cur.n_tokens, pos_min_thold, n_past);
+                                            // checkpoint must be within the validated common prefix
+                                            if (cur.n_tokens > (int64_t) n_past) {
+                                                return false;
+                                            }
                                             return cur.pos_min < pos_min_thold || cur.pos_min == 0;
                                         }
                                     );
@@ -2791,7 +2812,11 @@ private:
                                         it->load_tgt(ctx_tgt,       slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
                                         it->load_dft(ctx_dft.get(), slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
 
-                                        pos_next = std::min(pos_next, std::max(it->pos_min + 1, it->pos_max));
+                                        if (llama_n_rs_seq(ctx_tgt) > 0) {
+                                            pos_next = it->n_tokens;
+                                        } else {
+                                            pos_next = std::min(pos_next, std::max(it->pos_min + 1, it->pos_max));
+                                        }
                                         n_past   = std::min(slot.prompt.tokens.size_up_to_pos(pos_next), (size_t) it->n_tokens);
                                         SLT_WRN(slot, "restored context checkpoint (pos_min = %d, pos_max = %d, n_tokens = %" PRId64 ", n_past = %d, size = %.3f MiB)\n", it->pos_min, it->pos_max, it->n_tokens, n_past, (float) it->size() / 1024 / 1024);
                                     }

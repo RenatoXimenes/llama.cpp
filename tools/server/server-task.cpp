@@ -275,6 +275,7 @@ task_params server_task::params_from_json_cmpl(
     //params.t_max_prompt_ms  = json_value(data,       "t_max_prompt_ms",    defaults.t_max_prompt_ms); // TODO: implement
     params.t_max_predict_ms = json_value(data,       "t_max_predict_ms",   defaults.t_max_predict_ms);
     params.response_fields  = json_value(data,       "response_fields",    std::vector<std::string>());
+    params.use_slot_prompt  = json_value(data,       "use_slot_prompt",    false);
 
     params.sampling.top_k              = json_value(data, "top_k",               defaults.sampling.top_k);
     params.sampling.top_p              = json_value(data, "top_p",               defaults.sampling.top_p);
@@ -2072,6 +2073,8 @@ bool server_prompt_cache::load(server_prompt & prompt, const server_tokens & tok
 
         const float f_keep_cur = float(lcp_cur) / it->tokens.size();
         const float sim_cur    = float(lcp_cur) / tokens_new.size();
+
+        SRV_INF("   * entry: size=%zu, lcp=%d, f_keep=%.3f, sim=%.3f\n", it->tokens.size(), lcp_cur, f_keep_cur, sim_cur);
 
         // don't trash large prompts
         if (f_keep_cur < 0.25f) {

@@ -3447,6 +3447,10 @@ llama_context * llama_init_from_model(
 
 
     try {
+        if (params.n_rs_seq == 0 && (llama_model_is_recurrent(model) || llama_model_is_hybrid(model))) {
+            LLAMA_LOG_WARN("%s: recurrent/hybrid model detected, overriding n_rs_seq = 0 to 8 to support rollback/checkpointing\n", __func__);
+            params.n_rs_seq = 8;
+        }
         auto * ctx = new llama_context(*model, params);
         return ctx;
     } catch (const std::exception & err) {
