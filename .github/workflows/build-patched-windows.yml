@@ -1,0 +1,51 @@
+name: Build Patched Windows CUDA Binary
+
+on:
+  workflow_dispatch: # Permite execução manual a partir da aba Actions do GitHub
+
+jobs:
+  build-patched-windows:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout Código-Fonte
+        uses: actions/checkout@v4
+
+      - name: Instalar CUDA Toolkit 12.4
+        uses: ./.github/actions/windows-setup-cuda
+        with:
+          cuda_version: '12.4'
+
+      - name: Instalar Ninja Compiler
+        run: |
+          choco install ninja
+
+      - name: Configurar MSVC e Compilar via CMake
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build -G "Ninja Multi-Config" ^
+            -DLLAMA_BUILD_SERVER=ON ^
+            -DLLAMA_BUILD_BORINGSSL=ON ^
+            -DGGML_NATIVE=OFF ^
+            -DGGML_BACKEND_DL=ON ^
+            -DGGML_CPU_ALL_VARIANTS=ON ^
+            -DGGML_CUDA=ON ^
+            -DGGML_RPC=ON
+          
+          set /A NINJA_JOBS=%NUMBER_OF_PROCESSORS%-1
+          cmake --build build --config Release -j %NINJA_JOBS% -t ggml
+          cmake --build build --config Release -j %NINJA_JOBS%
+
+      - name: Empacotar Binários
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package
+          Copy-Item -Path "build\bin\Release\llama-server.exe" -Destination "package\"
+          Copy-Item -Path "build\bin\Release\*.dll" -Destination "package\"
+
+      - name: Upload do ZIP de Artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-latest-win-cuda
+          path: package/*
