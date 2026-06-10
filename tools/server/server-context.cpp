@@ -2745,7 +2745,7 @@ private:
 
                                 // when the prompt prefix does not match, print the tokens around the mismatch
                                 // this is useful for debugging prompt caching
-                                if (true) {
+                                if (slots_debug) {
                                     const int np0 = std::max<int>(n_past - 4, 0);
                                     const int np1 = std::min<int>(n_past + 6, std::min(slot.prompt.tokens.size(), slot.task->tokens.size()));
 
@@ -2813,7 +2813,8 @@ private:
                                         it->load_dft(ctx_dft.get(), slot.id, LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY);
 
                                         if (llama_n_rs_seq(ctx_tgt) > 0) {
-                                            pos_next = it->n_tokens;
+                                            size_t max_safe_pos = slot.prompt.tokens.size() + llama_n_rs_seq(ctx_tgt);
+                                            pos_next = std::min(it->n_tokens, (int64_t)max_safe_pos);
                                         } else {
                                             pos_next = std::min(pos_next, std::max(it->pos_min + 1, it->pos_max));
                                         }
