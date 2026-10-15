@@ -69,7 +69,7 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
         ->set_desc("Min chunk size to attempt reusing from the cache via KV shifting. See --cache-reuse arg"));
 
     add((new field_bool("use_slot_prompt", params.use_slot_prompt))
-        ->set_desc("Prepend the cached prompt from an explicitly selected slot (NexusAI)"));
+        ->set_desc("Prepend the cached prompt from an explicitly selected slot (cached prompt continuation)"));
 
     // TODO: implement t_max_prompt_ms
     // add((new field_num("t_max_prompt_ms", params.t_max_prompt_ms))

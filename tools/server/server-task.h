@@ -99,7 +99,7 @@ struct task_params {
     // Embeddings
     int32_t embd_normalize = 2; // (-1=none, 0=max absolute int16, 1=taxicab, 2=Euclidean/L2, >2=p-norm)
 
-    // NexusAI: continue from an explicitly selected slot without resending its prefix.
+    // Continue from an explicitly selected slot without resending its prefix.
     bool use_slot_prompt = false;
 
     json format_logit_bias(const std::vector<llama_logit_bias> & logit_bias) const;

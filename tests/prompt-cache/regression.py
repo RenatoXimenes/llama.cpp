@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone NexusAI prefill regression against an isolated llama-server.
+"""Standalone cached-prompt regression against an isolated llama-server.
 
 Uses synthetic prompts and a caller-supplied GGUF. Never touches worker services
 or existing prefill files. All slot files live in a new temporary directory.
@@ -18,20 +18,22 @@ from pathlib import Path
 
 
 class Server:
-    def __init__(self, binary, model, root):
+    def __init__(self, binary, model, root, context_size=4096, gpu_layers=0, threads=4):
         self.binary, self.model, self.root = binary, model, root
+        self.context_size, self.gpu_layers, self.threads = context_size, gpu_layers, threads
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             self.port = sock.getsockname()[1]
         self.process = None
         self.log = None
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def start(self):
         self.log = (self.root / "server.log").open("ab")
         self.process = subprocess.Popen(
             [str(self.binary), "-m", str(self.model), "--host", "127.0.0.1",
-             "--port", str(self.port), "-ngl", "0", "-c", "4096", "-np", "2",
-             "-b", "128", "-ub", "128", "-t", "4", "--cache-ram", "0",
+             "--port", str(self.port), "-ngl", str(self.gpu_layers), "-c", str(self.context_size), "-np", "2",
+             "-b", "128", "-ub", "128", "-t", str(self.threads), "--cache-ram", "0",
              "--slot-save-path", str(self.root), "--slots"],
             stdout=self.log, stderr=subprocess.STDOUT,
         )
@@ -63,7 +65,7 @@ class Server:
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=raw,
                                      headers={"Content-Type": "application/json"}, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=120) as response:
+            with self.opener.open(req, timeout=120) as response:
                 data = response.read()
                 if response.headers.get("Content-Type", "").startswith("text/event-stream"):
                     return response.status, [json.loads(line[6:]) for line in data.decode().splitlines()
@@ -89,16 +91,16 @@ class Server:
         self.ok(f"/slots/{slot}?action=erase", {})
 
 
-def run(binary, model, output):
+def run(binary, model, output, context_size=4096, repetitions=25, gpu_layers=0, threads=4):
     output.mkdir(parents=True, exist_ok=True)
     results = []
-    with tempfile.TemporaryDirectory(prefix="nexus-prefill-") as directory:
+    with tempfile.TemporaryDirectory(prefix="prompt-cache-") as directory:
         root = Path(directory)
-        server = Server(binary, model, root)
+        server = Server(binary, model, root, context_size, gpu_layers, threads)
         try:
             server.start()
-            for label, prefix in [("alpha", "Once upon a time, Alice found a red flower. " * 25),
-                                  ("beta", "Once upon a time, Bob found a blue boat. " * 25)]:
+            for label, prefix in [("alpha", "Once upon a time, Alice found a red flower. " * repetitions),
+                                  ("beta", "Once upon a time, Bob found a blue boat. " * repetitions)]:
                 prefix_tokens = server.tokens(prefix)
                 tail = server.tokens("And then the story continued:")
                 server.erase(0)
@@ -123,7 +125,7 @@ def run(binary, model, output):
             server.ok("/slots/0?action=restore", {"filename": "alpha.bin"})
             alpha = server.completion(0, tail, use_slot_prompt=True)
             server.erase(1)
-            reference = server.completion(1, server.tokens("Once upon a time, Alice found a red flower. " * 25) + tail)
+            reference = server.completion(1, server.tokens("Once upon a time, Alice found a red flower. " * repetitions) + tail)
             assert alpha["content"] == reference["content"]
             results.append(dict(test="cross_document_isolation", passed=True))
             # Disk state must survive a process restart, rather than just a cache hit.
@@ -152,7 +154,7 @@ def run(binary, model, output):
             results.append(dict(test="streaming_parallel_slots", passed=True))
             props = server.ok("/props", method="GET")
             if props.get("chat_template"):
-                chat = dict(model="nexus-test", messages=[{"role": "user", "content": "Say hello."}],
+                chat = dict(model="test-model", messages=[{"role": "user", "content": "Say hello."}],
                             max_tokens=8, temperature=0,
                             chat_template_kwargs={"enable_thinking": False})
                 response = server.ok("/v1/chat/completions", chat)
@@ -167,7 +169,8 @@ def run(binary, model, output):
             results.append(dict(test="reject_corrupt_state_without_crash", passed=True))
         finally:
             server.stop()
-            (output / "server.log").write_bytes((root / "server.log").read_bytes())
+            if (root / "server.log").is_file():
+                (output / "server.log").write_bytes((root / "server.log").read_bytes())
             (output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(dict(model=model.name, tests=len(results), results=results)), flush=True)
 
@@ -177,5 +180,12 @@ if __name__ == "__main__":
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--model", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--context-size", type=int, default=4096)
+    parser.add_argument("--prefix-repetitions", type=int, default=25)
+    parser.add_argument("--gpu-layers", type=int, default=0)
+    parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args()
-    run(args.binary.resolve(), args.model.resolve(), args.output.resolve())
+    if args.context_size < 128 or args.prefix_repetitions < 1 or args.threads < 1:
+        parser.error("Context, prefix repetitions and threads must be positive")
+    run(args.binary.resolve(), args.model.resolve(), args.output.resolve(),
+        args.context_size, args.prefix_repetitions, args.gpu_layers, args.threads)

@@ -15,8 +15,9 @@ Ported behavior:
   This prevents accidentally continuing another client's automatically selected
   slot. NexusAI already supplies `id_slot`.
 - Context checkpoints cannot extend beyond the validated common token prefix.
-- Recurrent rollback defaults to 8 states only on architectures that support
-  recurrent partial rollback in this upstream version. Explicit values remain.
+- The original candidate forced 8 recurrent rollback states. Follow-up hybrid
+  tests with short and 8,801-token prefixes passed using upstream's native
+  settings, so the GitLab version removes this override from the core.
 
 The old manual checkpoint insertion on restore is superseded by upstream's
 checkpoint appendix serialization and validated restore. The previous forced
@@ -43,7 +44,7 @@ prompt. This demonstrates cache reuse, not a general hardware speedup.
 Reproduce without accessing a worker service:
 
 ```sh
-python tests/nexusai/prefill_regression.py \
+python tests/prompt-cache/regression.py \
   --binary /path/to/new/llama-server \
   --model /path/to/model.gguf --output /private/test-results
 ```
@@ -58,6 +59,12 @@ do not overwrite the only working old cache. Never copy internal KV-state
 bytes between versions or treat a failed restore as a successful cache hit.
 
 ## Windows candidate and deployment
+
+The original GitHub candidate workflow below was replaced by the generic
+GitLab pipeline. See [fork-runtime.md](fork-runtime.md) for current builds,
+packages and parameter names. The GitHub candidate pinned to `c0857da049b0`
+predates removal of the forced rollback setting and is not the final GitLab
+version.
 
 The dedicated workflow builds CUDA 12.4 / SM86 (RTX A4000), retains CPU fallback
 and TLS support, runs synthetic CPU prefill regressions on Windows and packages

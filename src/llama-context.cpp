@@ -4108,11 +4108,6 @@ llama_context * llama_init_from_model(
     }
 
     try {
-        // NexusAI: retain recurrent rollback support from the prefill fork, but
-        // only for architectures that support it in the current implementation.
-        if (params.n_rs_seq == 0 && llm_arch_supports_rs_rollback(model->arch)) {
-            params.n_rs_seq = 8;
-        }
         auto * ctx = new llama_context(*model, params);
         const auto & cparams = ctx->get_cparams();
 

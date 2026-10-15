@@ -1,0 +1,50 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
+
+stages: [build]
+
+variables:
+  GIT_DEPTH: "0"
+  BUILD_JOBS: "4"
+  CUDA_ARCHITECTURES: "86"
+  CUDA_CCCL_VERSION: "v3.4.3"
+  PUBLISH_PACKAGES: "1"
+
+.runtime:
+  stage: build
+  timeout: 3 hours
+  interruptible: true
+  artifacts:
+    when: always
+    expire_in: 30 days
+    paths:
+      - dist/*.manifest.json
+      - dist/*.sha256
+      - dist/*/regression/results.json
+      - dist/*/regression/server.log
+      - dist/*/build-info.json
+
+linux cpu:
+  extends: .runtime
+  tags: [linux-build]
+  script:
+    - python3 ci/gitlab/build_runtime.py --backend cpu
+
+windows cuda:
+  extends: .runtime
+  tags: [windows-build]
+  resource_group: windows-cuda-build
+  script:
+    - powershell.exe -NoProfile -ExecutionPolicy Bypass -File ci/gitlab/build_windows.ps1 -Backend cuda
+
+windows cpu:
+  extends: .runtime
+  tags: [windows-build]
+  when: manual
+  allow_failure: true
+  script:
+    - powershell.exe -NoProfile -ExecutionPolicy Bypass -File ci/gitlab/build_windows.ps1 -Backend cpu

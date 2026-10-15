@@ -3863,7 +3863,7 @@ private:
                                         [&](const auto & cur) {
                                             // guarantee that a checkpoint will result in at least one token being processed [TAG_PROMPT_LOGITS]
                                             SLT_TRC(slot, "checking checkpoint with [%d, %d] against %d...\n", cur.pos_min, cur.pos_max, pos_min_thold);
-                                            // NexusAI: a checkpoint must belong to the validated prefix.
+                                            // A checkpoint must belong to the validated prefix.
                                             if (cur.n_tokens > (int64_t) n_past) {
                                                 return false;
                                             }
