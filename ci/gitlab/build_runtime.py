@@ -69,10 +69,18 @@ def copy_cuda_runtime(package):
             raise RuntimeError(f'Missing CUDA runtime: {pattern} in {toolkit / "bin"}')
         for source in matches:
             shutil.copy2(source, package / source.name)
-    eula = toolkit / 'EULA.txt'
-    if not eula.is_file():
-        raise RuntimeError(f'CUDA redistribution notice not found: {eula}')
-    shutil.copy2(eula, package / 'CUDA-EULA.txt')
+    notices = [p for p in sorted(toolkit.iterdir()) if p.is_file() and
+               p.name.upper().startswith(('EULA', 'LICENSE'))]
+    if not notices:
+        raise RuntimeError(f'CUDA redistribution notices not found in {toolkit}')
+    for source in notices:
+        shutil.copy2(source, package / ('CUDA-' + source.name))
+    # NVIDIA redistributable archives retain component-specific notices.
+    for directory in sorted(toolkit.glob('*-archive')):
+        if directory.is_dir():
+            for source in sorted(directory.iterdir()):
+                if source.is_file() and source.name.upper().startswith(('EULA', 'LICENSE')):
+                    shutil.copy2(source, package / ('CUDA-' + directory.name + '-' + source.name))
 
 
 def publish(files, version):

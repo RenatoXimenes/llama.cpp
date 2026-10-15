@@ -1,0 +1,75 @@
+name: Build Windows CUDA candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci/windows-cuda-*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-cuda:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      BUILD_JOBS: '4'
+      CUDA_ARCHITECTURES: '86'
+      CUDA_CCCL_VERSION: 'v3.4.3'
+      PUBLISH_PACKAGES: '0'
+      CI_PIPELINE_ID: ${{ github.run_id }}
+      CI_JOB_ID: ${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CUDA Toolkit 12.4
+        uses: ./.github/actions/windows-setup-cuda
+        with:
+          cuda_version: '12.4'
+          cuda_arch: x64
+      - name: Install Ninja
+        run: choco install ninja -y
+      - name: Build, package and test
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File ci/gitlab/build_windows.ps1 -Backend cuda
+      - name: Test hybrid checkpoint persistence
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP 'Qwen3.5-0.8B-Q4_K_M.gguf'
+          $url = 'https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/6ab461498e2023f6e3c1baea90a8f0fe38ab64d0/Qwen3.5-0.8B-Q4_K_M.gguf'
+          Invoke-WebRequest $url -OutFile $model
+          $hash = (Get-FileHash $model -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne 'bd258782e35f7f458f8aced1adc053e6e92e89bc735ba3be89d38a06121dc517') { throw 'Hybrid model checksum mismatch' }
+          python tests/prompt-cache/regression.py --binary build-gitlab-windows-x64-cuda/bin/Release/llama-server.exe --model $model --output dist/windows-x64-cuda/hybrid-regression
+          if ($LASTEXITCODE -ne 0) { throw 'Hybrid regression failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-cuda-sm86-${{ github.sha }}
+          retention-days: 14
+          path: |
+            dist/*.zip
+            dist/*.sha256
+            dist/*.manifest.json
+            dist/*/build-info.json
+            dist/*/regression/
+            dist/*/hybrid-regression/
+      - name: Publish tested candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'candidate-' + $env:GITHUB_SHA.Substring(0,12) + '-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_RUN_ATTEMPT
+          Copy-Item dist/windows-x64-cuda/hybrid-regression/results.json dist/hybrid-regression-results.json
+          $assets = @(Get-ChildItem dist -File | Where-Object { $_.Name -match '\.(zip|sha256|json)$' } | ForEach-Object { $_.FullName })
+          $notes = Join-Path $env:RUNNER_TEMP 'candidate-notes.txt'
+          "CUDA 12.4 / SM86 candidate from $env:GITHUB_SHA. Transformer and hybrid prefill regressions passed on CPU. Includes DLLs, CUDA redistribution notices, file hashes and build provenance. GPU performance validation remains separate." | Set-Content $notes -Encoding utf8
+          gh release create $tag @assets --prerelease --latest=false --target $env:GITHUB_SHA --title "Windows CUDA candidate $tag" --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate publication failed' }

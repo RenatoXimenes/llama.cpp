@@ -37,9 +37,19 @@ if ($Backend -eq 'cuda') {
     $env:Path = (Join-Path $env:CUDA_PATH 'bin') + ';' + $env:Path
 }
 
-$python = Get-Command python.exe,python3.exe,py.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $python) { throw 'Python 3.10+ must be available to the runner service account.' }
+if ($env:PYTHON_EXECUTABLE) {
+    if (-not (Test-Path $env:PYTHON_EXECUTABLE -PathType Leaf)) { throw 'PYTHON_EXECUTABLE does not identify a file.' }
+    $pythonPath = (Resolve-Path $env:PYTHON_EXECUTABLE).Path
+} else {
+    $python = Get-Command python.exe,python3.exe,py.exe -ErrorAction SilentlyContinue |
+        Where-Object { $_.Source -notlike '*\Microsoft\WindowsApps\*' } | Select-Object -First 1
+    if (-not $python) { throw 'Python 3.10+ is required; install it or set PYTHON_EXECUTABLE for the runner.' }
+    $pythonPath = $python.Source
+}
 $prefix = @()
-if ($python.Name -eq 'py.exe') { $prefix = @('-3') }
-& $python.Source @prefix ci/gitlab/build_runtime.py --backend $Backend
+if ([IO.Path]::GetFileName($pythonPath) -eq 'py.exe') { $prefix = @('-3') }
+$env:Path = (Split-Path $pythonPath) + ';' + $env:Path
+& $pythonPath @prefix -c 'import sys; sys.exit(int(sys.version_info < (3, 10)))'
+if ($LASTEXITCODE -ne 0) { throw 'Python validation failed.' }
+& $pythonPath @prefix ci/gitlab/build_runtime.py --backend $Backend
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -88,6 +88,7 @@ Pipeline variables:
 | `CUDA_ARCHITECTURES` | `86` | CMake CUDA architectures; change for other GPUs. |
 | `CUDA_CCCL_VERSION` | `v3.4.3` | Upstream CCCL compatibility dependency; empty uses the toolkit's bundled version. |
 | `MSVC_TOOLSET_VERSION` | unset | Optional installed MSVC toolset selection, such as `14.39`, for CUDA/compiler compatibility. |
+| `PYTHON_EXECUTABLE` | detected from PATH | Optional full path to Python for the runner service account; Windows Store aliases are excluded. |
 | `PUBLISH_PACKAGES` | `1` | Publish only from the default branch or a protected ref. Set `0` to retain local output only. |
 
 Packages include all generated server DLLs/shared libraries, CPU backends,
@@ -112,6 +113,12 @@ the job's `dist/` directory until runner cleanup.
 There is no deployment job in this repository. Consumers choose an immutable
 package version. Upstream merges should be reviewed against the three modified
 server files and rerun the transformer/hybrid tests before release.
+
+For a hosted Windows build while configuring internal runners, push a
+`ci/windows-cuda-*` branch to the GitHub mirror. Its candidate workflow calls
+the same build/package scripts, adds a pinned hybrid-model regression, and
+publishes an immutable prerelease after both suites pass. It does not publish
+to the GitLab registry.
 
 For a local CPU build and package, run `python3 ci/gitlab/build_runtime.py
 --backend cpu`. To verify an existing build, add `--skip-build --build-dir
