@@ -38,7 +38,12 @@ jobs:
       - name: Install Ninja
         run: choco install ninja -y
       - name: Build, package and test
-        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File ci/gitlab/build_windows.ps1 -Backend cuda
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          if errorlevel 1 exit /b 1
+          python ci/gitlab/build_runtime.py --backend cuda
+          if errorlevel 1 exit /b 1
       - name: Test hybrid checkpoint persistence
         shell: pwsh
         run: |
