@@ -4,7 +4,7 @@ void llama_model_jais::load_arch_hparams(llama_model_loader & ml) {
     ml.get_key(LLM_KV_ATTENTION_LAYERNORM_EPS, hparams.f_norm_eps);
     ml.get_key(LLM_KV_ATTENTION_MAX_ALIBI_BIAS, hparams.f_max_alibi_bias, false);
 
-    switch (hparams.n_layer) {
+    switch (hparams.n_layer()) {
         case 24: type = LLM_TYPE_1_3B; break;
         case 40: type = LLM_TYPE_13B; break;
         /* TODO: add variants */
@@ -127,6 +127,4 @@ llama_model_jais::graph::graph(const llama_model & model, const llm_graph_params
 
     cb(cur, "result_output", -1);
     res->t_logits = cur;
-
-    ggml_build_forward_expand(gf, cur);
 }

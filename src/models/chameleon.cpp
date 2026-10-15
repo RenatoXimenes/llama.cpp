@@ -6,7 +6,7 @@ void llama_model_chameleon::load_arch_hparams(llama_model_loader & ml) {
     hparams.f_norm_eps = 1e-5;  // eps for qk-norm, torch default
     ml.get_key(LLM_KV_SWIN_NORM, hparams.swin_norm, false);
 
-    switch (hparams.n_layer) {
+    switch (hparams.n_layer()) {
         case 32: type = LLM_TYPE_7B; break;
         case 48: type = LLM_TYPE_34B; break;
         default: type = LLM_TYPE_UNKNOWN;
@@ -199,6 +199,4 @@ llama_model_chameleon::graph::graph(const llama_model & model, const llm_graph_p
 
     cb(cur, "result_output", -1);
     res->t_logits = cur;
-
-    ggml_build_forward_expand(gf, cur);
 }

@@ -3,7 +3,7 @@
 void llama_model_eurobert::load_arch_hparams(llama_model_loader & ml) {
     ml.get_key(LLM_KV_ATTENTION_LAYERNORM_RMS_EPS, hparams.f_norm_rms_eps);
 
-    if (hparams.n_layer == 12) {
+    if (hparams.n_layer() == 12) {
         type = LLM_TYPE_SMALL;  // 0.2B
     }
 }
@@ -119,6 +119,4 @@ llama_model_eurobert::graph::graph(const llama_model & model, const llm_graph_pa
 
     cb(cur, "result_embd", -1);
     res->t_embd = cur;
-
-    ggml_build_forward_expand(gf, cur);
 }

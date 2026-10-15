@@ -1,14 +1,14 @@
 #include "models.h"
 
 void llama_model_dbrx::load_arch_hparams(llama_model_loader & ml) {
-ml.get_key(LLM_KV_ATTENTION_LAYERNORM_EPS, hparams.f_norm_eps);
-ml.get_key(LLM_KV_ATTENTION_CLAMP_KQV,     hparams.f_clamp_kqv);
+    ml.get_key(LLM_KV_ATTENTION_LAYERNORM_EPS, hparams.f_norm_eps);
+    ml.get_key(LLM_KV_ATTENTION_CLAMP_KQV,     hparams.f_clamp_kqv);
 
-switch (hparams.n_layer) {
-    case 40: type = LLM_TYPE_16x12B; break;
-    default: type = LLM_TYPE_UNKNOWN;
+    switch (hparams.n_layer()) {
+        case 40: type = LLM_TYPE_16x12B; break;
+        default: type = LLM_TYPE_UNKNOWN;
+    }
 }
-        }
 
 void llama_model_dbrx::load_arch_tensors(llama_model_loader &) {
     LLAMA_LOAD_LOCALS;
@@ -149,6 +149,4 @@ llama_model_dbrx::graph::graph(const llama_model & model, const llm_graph_params
 
     cb(cur, "result_output", -1);
     res->t_logits = cur;
-
-    ggml_build_forward_expand(gf, cur);
 }

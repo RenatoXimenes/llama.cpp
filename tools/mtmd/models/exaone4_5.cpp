@@ -22,8 +22,8 @@ ggml_cgraph * clip_graph_exaone4_5::build() {
     ggml_tensor * inp_raw = build_inp_raw();
     ggml_tensor * inp = ggml_conv_2d(ctx0, model.patch_embeddings_0, inp_raw, patch_size, patch_size, 0, 0, 1, 1);
 
-    GGML_ASSERT(img.nx % (patch_size * 2) == 0);
-    GGML_ASSERT(img.ny % (patch_size * 2) == 0);
+    GGML_ASSERT(img.nx() % (patch_size * 2) == 0);
+    GGML_ASSERT(img.ny() % (patch_size * 2) == 0);
 
     {
         ggml_tensor * inp_1 = ggml_conv_2d(ctx0, model.patch_embeddings_1, inp_raw, patch_size, patch_size, 0, 0, 1, 1);
@@ -58,13 +58,7 @@ ggml_cgraph * clip_graph_exaone4_5::build() {
         ggml_set_name(inv_window_idx, "inv_window_idx");
         ggml_set_input(inv_window_idx);
 
-        window_mask = ggml_new_tensor_2d(ctx0, GGML_TYPE_F32, n_pos, n_pos);
-        ggml_set_name(window_mask, "window_mask");
-        ggml_set_input(window_mask);
-
-        if (flash_attn_type == CLIP_FLASH_ATTN_TYPE_ENABLED) {
-            window_mask = ggml_cast(ctx0, window_mask, GGML_TYPE_F16);
-        }
+        window_mask = build_inp_attn_mask(n_pos, n_pos);
     }
 
     ggml_tensor * inpL = inp;
